@@ -1,0 +1,39 @@
+stages:
+  ingest:
+    cmd: python src/industrial_fault_detection/data/data_ingestion.py
+    deps:
+      - src/industrial_fault_detection/data/data_ingestion.py
+      - src/industrial_fault_detection/config.py
+    outs:
+      - data/processed/bottle
+
+  validate:
+    cmd: python src/industrial_fault_detection/data/data_validation.py
+    deps:
+      - src/industrial_fault_detection/data/data_validation.py
+      - data/processed/bottle
+
+  train:
+    cmd: python src/industrial_fault_detection/training/train.py
+    deps:
+      - src/industrial_fault_detection/training/train.py
+      - src/industrial_fault_detection/model/resnet_50.py
+      - src/industrial_fault_detection/data/data_preprocessing.py
+      - data/processed/bottle/train
+      - data/processed/bottle/val
+    outs:
+      - models/bottle_best_model.keras
+      - models/class_names.txt
+
+  evaluate:
+    cmd: python src/industrial_fault_detection/evaluation/evaluate.py
+    deps:
+      - src/industrial_fault_detection/evaluation/evaluate.py
+      - models/bottle_best_model.keras
+      - data/processed/bottle/val
+    metrics:
+      - models/evaluation_metrics.json:
+          cache: false
+    plots:
+      - models/confusion_matrix.png:
+          cache: false

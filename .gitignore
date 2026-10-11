@@ -1,0 +1,65 @@
+
+# Virtual Environments & Python
+
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+
+# Data (Tracked by DVC, ignored by Git)
+
+data/raw/
+data/processed/
+*.zip
+*.tar.gz
+*.png
+*.jpg
+*.jpeg
+
+
+# Models & Checkpoints (Tracked by DVC, ignored by Git)
+
+models/
+artifacts/
+*.keras
+*.h5
+*.pt
+*.pth
+*.ckpt
+*.onnx
+
+
+# Experiment Tracking (MLflow)
+
+mlruns/
+*.db
+mlflow.db
+evaluation_metrics.json
+
+
+# DVC (Data Version Control)
+
+# Keep .dvc/config but ignore cache and local configurations
+.dvc/cache/
+.dvc/tmp/
+.dvc/config.local
+*.dvc
+
+
+# IDE & OS Files
+
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+
+# Environment Variables (Secrets)
+
+.env
+.env.local

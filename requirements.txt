@@ -1,0 +1,10 @@
+tensorflow
+fastapi
+uvicorn
+python-multipart
+streamlit
+kagglehub
+pandas
+scikit-learn
+Pillow
+mlflow
