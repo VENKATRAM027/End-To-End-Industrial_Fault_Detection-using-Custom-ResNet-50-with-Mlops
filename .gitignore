@@ -48,8 +48,6 @@ evaluation_metrics.json
 .dvc/cache/
 .dvc/tmp/
 .dvc/config.local
-*.dvc
-
 
 # IDE & OS Files
 
