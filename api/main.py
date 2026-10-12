@@ -1,6 +1,7 @@
 import sys
 import io
 from pathlib import Path
+from contextlib import asynccontextmanager
 import numpy as np
 import tensorflow as tf
 from PIL import Image
@@ -8,37 +9,21 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-
+# Dynamically resolve the project root and add the 'src' directory to the path
 project_root = Path(__file__).resolve().parent.parent
 sys.path.append(str(project_root / "src"))
 
 from industrial_fault_detection.config import MODEL_SAVE_PATH, IMAGE_SIZE
 
-# Initialize FastAPI App
-app = FastAPI(
-    title="Industrial Anomaly Detection API",
-    description="API for detecting defects using a Custom ResNet-50 model.",
-    version="1.0.0"
-)
-
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 # Global variables for model and class names
 model = None
 class_names = []
 
-@app.on_event("startup")
-async def load_model_and_classes():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     """
-    Loads the model and class names into memory when the server starts.
-    This prevents loading the model on every single API request.
+    Lifespan context manager replaces the deprecated @app.on_event("startup").
+    Loads the model into memory before the server starts accepting requests.
     """
     global model, class_names
     
@@ -57,6 +42,31 @@ async def load_model_and_classes():
         class_names = ["anomaly", "good"]
         
     print(f"Model loaded successfully. Classes: {class_names}")
+    
+    # Yield control back to FastAPI to handle requests
+    yield
+    
+    # Cleanup on shutdown
+    print("Shutting down API and clearing memory...")
+    model = None
+    class_names = []
+
+# Initialize FastAPI App with the lifespan manager
+app = FastAPI(
+    title="Industrial Anomaly Detection API",
+    description="API for detecting defects using a Custom ResNet-50 model.",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# Enable CORS so frontend dashboards can communicate with the API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 async def root():
@@ -80,33 +90,35 @@ async def predict(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="File provided is not an image.")
 
     try:
-        
+        # Read the image bytes
         contents = await file.read()
         image = Image.open(io.BytesIO(contents)).convert("RGB")
         
-        
+        # Preprocess the image to match the ResNet-50 input
         image = image.resize(IMAGE_SIZE)
         img_array = tf.keras.preprocessing.image.img_to_array(image)
         
-        
+        # Add the batch dimension (shape becomes: 1, 224, 224, 3)
         img_array = tf.expand_dims(img_array, 0)
         
-        predictions = model.predict(img_array, verbose=1)
-
-        prediction_class_idx = int(np.argmax(predictions[0]))
-        confidence = float(predictions[0][prediction_class_idx])
-        predicted_class_name = class_names[prediction_class_idx]
-
+        # Run inference
+        predictions = model.predict(img_array, verbose=0)
+        
+        # Extract results
+        predicted_class_idx = int(np.argmax(predictions[0]))
+        confidence = float(predictions[0][predicted_class_idx])
+        predicted_class_name = class_names[predicted_class_idx]
+        
         return {
-            "filename" : file.filename,
-            "prediction" : predicted_class_name,
-            "confidence" : round(confidence, 4),
-            "raw_probabilities" : predictions[0].tolist()
+            "filename": file.filename,
+            "prediction": predicted_class_name,
+            "confidence": round(confidence, 4),
+            "raw_probabilities": predictions[0].tolist()
         }
-
+        
     except Exception as e:
-        raise HTTPException(status_code=500,detail=f"Error processing image: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
 
-    if __name__ == "__main__":
-        print("Starting the FastAPI server...")
-        uvicorn.run("main:app",host="0.0.0.0",reload=True)
+if __name__ == "__main__":
+    print("Starting FastAPI server...")
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

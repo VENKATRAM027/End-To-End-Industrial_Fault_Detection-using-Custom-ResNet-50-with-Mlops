@@ -48,7 +48,7 @@ def main():
         with col1:
             st.subheader("Live Camera Feed / Upload")
             image = Image.open(uploaded_file)
-            st.image(image, caption="Component ready for analysis", use_column_width=True)
+            st.image(image, caption="Component ready for analysis", use_container_width=True)
 
         with col2:
             st.subheader("AI Inspection Results")
