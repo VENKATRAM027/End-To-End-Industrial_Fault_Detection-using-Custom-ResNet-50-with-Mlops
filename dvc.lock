@@ -1,0 +1,90 @@
+schema: '2.0'
+stages:
+  ingest:
+    cmd: python src/industrial_fault_detection/data/data_ingestion.py
+    deps:
+    - path: src/industrial_fault_detection/config.py
+      hash: md5
+      md5: b27c995e9bc3eb436745ae2e70cf2c30
+      size: 1136
+    - path: src/industrial_fault_detection/data/data_ingestion.py
+      hash: md5
+      md5: 3fd77ba464dd545af3d06ca11c77695e
+      size: 2525
+    outs:
+    - path: data/processed/bottle
+      hash: md5
+      md5: 7d547e6dfa3be3977c99585b722e7d7f.dir
+      size: 149355398
+      nfiles: 279
+  validate:
+    cmd: python src/industrial_fault_detection/data/data_validation.py
+    deps:
+    - path: data/processed/bottle
+      hash: md5
+      md5: 7d547e6dfa3be3977c99585b722e7d7f.dir
+      size: 149355398
+      nfiles: 279
+    - path: src/industrial_fault_detection/data/data_validation.py
+      hash: md5
+      md5: a62f5c98352fccb85e2ef3a020e833be
+      size: 1170
+  train:
+    cmd: python src/industrial_fault_detection/training/train.py
+    deps:
+    - path: data/processed/bottle/train
+      hash: md5
+      md5: 802f2810109025d2b1a50f6b755b8b96.dir
+      size: 118829097
+      nfiles: 222
+    - path: data/processed/bottle/val
+      hash: md5
+      md5: b84da0131afaf9c080cf7eb7d390c933.dir
+      size: 30526301
+      nfiles: 57
+    - path: src/industrial_fault_detection/data/data_preprocessing.py
+      hash: md5
+      md5: a4b1cc171cb99d43bd4f2893346f04fa
+      size: 1519
+    - path: src/industrial_fault_detection/model/resnet_50.py
+      hash: md5
+      md5: 172dd3ee8d99572299b6d8cfce15b7fd
+      size: 6286
+    - path: src/industrial_fault_detection/training/train.py
+      hash: md5
+      md5: 37ff1c97e32307e5789f7a48c93254dd
+      size: 4716
+    outs:
+    - path: models/bottle_best_model.keras
+      hash: md5
+      md5: d4dfe51d59ef4421cf45b988f8d2047f
+      size: 283122008
+    - path: models/class_names.txt
+      hash: md5
+      md5: 6c9ccc5bc9d71409a46c0ae33927b027
+      size: 15
+  evaluate:
+    cmd: python src/industrial_fault_detection/evaluation/evaluate.py
+    deps:
+    - path: data/processed/bottle/val
+      hash: md5
+      md5: b84da0131afaf9c080cf7eb7d390c933.dir
+      size: 30526301
+      nfiles: 57
+    - path: models/bottle_best_model.keras
+      hash: md5
+      md5: d4dfe51d59ef4421cf45b988f8d2047f
+      size: 283122008
+    - path: src/industrial_fault_detection/evaluation/evaluate.py
+      hash: md5
+      md5: 662457c49574e523544982dfe1dc4af7
+      size: 3523
+    outs:
+    - path: models/confusion_matrix.png
+      hash: md5
+      md5: 38443b72c8d5f18a90a86e3fe09969a6
+      size: 79883
+    - path: models/evaluation_metrics.json
+      hash: md5
+      md5: b1aea8a69e8f2c6096a08ab8bf43eda2
+      size: 875

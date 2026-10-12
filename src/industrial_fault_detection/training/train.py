@@ -14,7 +14,7 @@ from industrial_fault_detection.config import (
 from industrial_fault_detection.model.resnet_50 import build_resnet50 
 from industrial_fault_detection.data.data_preprocessing import load_and_preprocess_data
 
-tf.keras.utils.keras.set_random_seed(RANDOM_SEED)
+tf.keras.utils.set_random_seed(RANDOM_SEED)
 
 try:
     tf.config.experimental.enable_op_determinism()
