@@ -6,70 +6,40 @@ sys.path.append(str(project_root))
 import mlflow
 import mlflow.tensorflow
 import tensorflow as tf
-import tensorflow.keras
 
 from industrial_fault_detection.config import (
     CATEGORY, IMAGE_SIZE, BATCH_SIZE, EPOCHS, LEARNING_RATE,
     MODEL_SAVE_PATH, TRAIN_DIR, VAL_DIR, RANDOM_SEED, MODEL_NAME,
 )
 from industrial_fault_detection.model.resnet_50 import build_resnet50 
+from industrial_fault_detection.data.data_preprocessing import load_and_preprocess_data
 
-# DLOps: Ensure reproducibility
-tensorflow.keras.utils.set_random_seed(RANDOM_SEED)
+tf.keras.utils.keras.set_random_seed(RANDOM_SEED)
 
 try:
     tf.config.experimental.enable_op_determinism()
 except Exception:
     pass
 
-data_augmentation = tf.keras.Sequential([
-    tf.keras.layers.RandomFlip(mode="horizontal", seed=RANDOM_SEED),
-    tf.keras.layers.RandomRotation(factor=0.08, seed=RANDOM_SEED),
-    tf.keras.layers.RandomZoom(height_factor=0.10, width_factor=0.10, seed=RANDOM_SEED),
-    tf.keras.layers.RandomContrast(factor=0.10, seed=RANDOM_SEED),
-], name="data_augmentation")
+def get_class_weights():
+    """Dynamically calculates class weights to combat MVTec AD imbalance."""
+    anomaly_count = len(list((TRAIN_DIR / "anomaly").glob("*.png")))
+    good_count = len(list((TRAIN_DIR / "good").glob("*.png")))
+    total = anomaly_count + good_count
 
-def load_dataset():
-    print("Loading Dataset")
-    train_ds = tf.keras.utils.image_dataset_from_directory(
-        TRAIN_DIR, labels='inferred', label_mode="int",
-        image_size=IMAGE_SIZE, batch_size=BATCH_SIZE, shuffle=True, seed=RANDOM_SEED
-    )
-    val_ds = tf.keras.utils.image_dataset_from_directory(
-        VAL_DIR, labels='inferred', label_mode="int",
-        image_size=IMAGE_SIZE, batch_size=BATCH_SIZE, shuffle=False, seed=RANDOM_SEED
-    )
+    # Class 0 = anomaly, Class 1 = good (Alphabetical ordering from tf.data)
+    weight_0 = (1 / anomaly_count) * (total / 2.0)
+    weight_1 = (1 / good_count) * (total / 2.0)
 
-    train_class_names = train_ds.class_names
-    val_class_names = val_ds.class_names
-
-    # Make sure both datasets have the same class mapping.
-    if train_class_names != val_class_names:
-        raise ValueError(f"Class names mismatch: Train {train_class_names} vs Val {val_class_names}")
-
-    if len(train_class_names) != 2:
-        raise ValueError(f"Expected 2 classes, got {len(train_class_names)}")
-
-    train_ds = train_ds.map(
-        lambda images, labels: (
-            data_augmentation(images, training=True), labels
-        ),
-        num_parallel_calls=tf.data.AUTOTUNE,
-    )
-
-    # DLOps: Prevent GPU starvation
-    train_ds = train_ds.prefetch(tf.data.AUTOTUNE)
-    val_ds = val_ds.prefetch(tf.data.AUTOTUNE)
-
-    return train_ds, val_ds, train_class_names
+    print(f"Class Weights Calculated - Anomaly (0): {weight_0:.2f}, Good (1): {weight_1:.2f}")
+    return {0: weight_0, 1: weight_1}
 
 def build_model():
     input_shape = (IMAGE_SIZE[0], IMAGE_SIZE[1], 3)
-
     model = build_resnet50(
         input_shape=input_shape,
         num_classes=2,
-        dropout_rate=0.2,
+        dropout_rate=0.4, # Increased dropout slightly to prevent overfitting on minority class
     )
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE),
@@ -83,24 +53,26 @@ def train_model():
     mlflow.set_experiment(experiment_name)
 
     with mlflow.start_run(run_name=MODEL_NAME):
+        class_weights = get_class_weights()
+        
         mlflow.log_params({
             'category': CATEGORY,
             "model_name": MODEL_NAME,
             'batch_size': BATCH_SIZE,
             'epochs': EPOCHS,
             'learning_rate': LEARNING_RATE,
-            'augmentation': True,
+            'weight_anomaly': class_weights[0],
+            'weight_good': class_weights[1]
         })
 
-        (train_ds, val_ds, class_names) = load_dataset()
+        # Load data using your separated preprocessing script
+        (train_ds, val_ds, class_names) = load_and_preprocess_data()
+        
         mlflow.log_param("class_0", class_names[0])
         mlflow.log_param('class_1', class_names[1])
 
         model = build_model()
-        model.summary()
-
-        total_parameters = model.count_params()
-        mlflow.log_param('total_parameters', total_parameters)
+        mlflow.log_param('total_parameters', model.count_params())
 
         MODEL_SAVE_PATH.parent.mkdir(parents=True, exist_ok=True)
 
@@ -110,18 +82,22 @@ def train_model():
                 mode='min', save_best_only=True, verbose=1,
             ),
             tf.keras.callbacks.EarlyStopping(
-                monitor='val_loss', mode='min', patience=5,
+                monitor='val_loss', mode='min', patience=8, # Increased patience for weighted learning
                 restore_best_weights=True, verbose=1,
             ),
             tf.keras.callbacks.ReduceLROnPlateau(
                 monitor='val_loss', mode='min', factor=0.2,
-                patience=2, min_lr=1e-7, verbose=1,
+                patience=3, min_lr=1e-7, verbose=1,
             ),    
         ]
 
+        # Injecting the class weights into the training loop
         history = model.fit(
-            train_ds, validation_data=val_ds,
-            epochs=EPOCHS, callbacks=callbacks,
+            train_ds, 
+            validation_data=val_ds,
+            epochs=EPOCHS, 
+            callbacks=callbacks,
+            class_weight=class_weights
         )
 
         best_val_loss = min(history.history['val_loss'])
@@ -137,7 +113,6 @@ def train_model():
         for metric_name, metric_value in evaluation_results.items():
             mlflow.log_metric(f"final_{metric_name}", float(metric_value))
 
-        # Save class mappings as an artifact
         class_names_path = MODEL_SAVE_PATH.parent / "class_names.txt"
         with open(class_names_path, "w", encoding="utf-8") as file:
             for class_name in class_names:
