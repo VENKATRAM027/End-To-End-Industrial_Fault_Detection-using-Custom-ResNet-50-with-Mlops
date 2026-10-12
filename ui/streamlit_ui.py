@@ -1,100 +1,98 @@
-import streamlit as st
-import requests
-from PIL import Image
-import pandas as pd
 
-# Configure the Streamlit page styling
+import os
+
+import pandas as pd
+import requests
+import streamlit as st
+from PIL import Image
+
+
 st.set_page_config(
     page_title="Industrial Fault Detection",
     page_icon="🏭",
     layout="wide",
-    initial_sidebar_state="expanded"
 )
 
-# API Endpoint (Points to your FastAPI backend)
-API_URL = "http://localhost:8000/predict"
+API_URL = os.getenv(
+    "API_URL",
+    "http://localhost:8000/predict",
+)
+
 
 def main():
-    # Header Section
-    st.title("🏭 Industrial Fault Detection Dashboard")
-    st.markdown("""
-    Upload an image of an industrial component from the factory floor to detect physical defects. 
-    This system is powered by a custom ResNet-50 computer vision pipeline trained on the MVTec AD dataset.
-    """)
+    st.title("Industrial Fault Detection")
+    st.caption("ResNet-50 transfer learning · FastAPI · MLflow")
 
-    # Sidebar Information
-    st.sidebar.header("System Architecture")
-    st.sidebar.info(
-        "**Frontend:** Streamlit\n\n"
-        "**Backend:** FastAPI\n\n"
-        "**Model:** Custom ResNet-50 (TensorFlow/Keras)\n\n"
-        "**Tracking:** MLflow"
+    uploaded = st.file_uploader(
+        "Upload an industrial component image",
+        type=["png", "jpg", "jpeg", "webp"],
     )
 
-    st.sidebar.header("Instructions")
-    st.sidebar.markdown(
-        "1. Ensure the FastAPI server is running (`python api/main.py`).\n"
-        "2. Upload a `.png` or `.jpg` image of a component.\n"
-        "3. Click **Run Inspection**."
-    )
+    if uploaded is None:
+        st.info("Upload an image to begin inspection.")
+        return
 
-    # Main File Uploader
-    uploaded_file = st.file_uploader("Upload Component Image for Inspection", type=["jpg", "jpeg", "png"])
+    try:
+        image = Image.open(uploaded).convert("RGB")
+    except Exception:
+        st.error("Unable to read this image.")
+        return
 
-    if uploaded_file is not None:
-        # Create a two-column layout for visual balance
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.subheader("Live Camera Feed / Upload")
-            image = Image.open(uploaded_file)
-            st.image(image, caption="Component ready for analysis", use_container_width=True)
+    left, right = st.columns(2)
 
-        with col2:
-            st.subheader("AI Inspection Results")
-            
-            if st.button("Run Inspection", type="primary", use_container_width=True):
-                with st.spinner("Analyzing structural and textural features..."):
-                    try:
-                        # Prepare the file for a multipart POST request
-                        files = {"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)}
-                        
-                        # Send the image to the FastAPI backend
-                        response = requests.post(API_URL, files=files)
-                        
-                        if response.status_code == 200:
-                            result = response.json()
-                            prediction = result.get("prediction", "Unknown")
-                            confidence = result.get("confidence", 0.0)
-                            raw_probs = result.get("raw_probabilities", [])
+    with left:
+        st.subheader("Input image")
+        st.image(image, use_container_width=True)
 
-                            # Display the final verdict with color coding
-                            st.markdown("### Verdict:")
-                            if prediction.lower() == "good":
-                                st.success(f"✅ **{prediction.upper()}** (No anomalies detected)")
-                            else:
-                                st.error(f"⚠️ **{prediction.upper()}** (Structural or textural defect detected)")
-                            
-                            # Display Confidence Score
-                            st.metric(label="Model Confidence", value=f"{confidence * 100:.2f}%")
+    with right:
+        st.subheader("Inspection result")
 
-                            # Display the raw probabilities as a bar chart
-                            if raw_probs:
-                                st.markdown("#### Softmax Probabilities:")
-                                # Mapping to a dataframe for Streamlit charting
-                                df = pd.DataFrame({
-                                    "Probability": raw_probs
-                                }, index=["Class 0 (Anomaly)", "Class 1 (Good)"])
-                                
-                                st.bar_chart(df, color="#2e86c1")
+        if st.button("Run inspection", type="primary"):
+            try:
+                uploaded.seek(0)
+                response = requests.post(
+                    API_URL,
+                    files={
+                        "file": (
+                            uploaded.name,
+                            uploaded.getvalue(),
+                            uploaded.type or "image/jpeg",
+                        )
+                    },
+                    timeout=120,
+                )
+                response.raise_for_status()
+                result = response.json()
 
-                        else:
-                            st.error(f"API Error [{response.status_code}]: {response.text}")
-                            
-                    except requests.exceptions.ConnectionError:
-                        st.error("🚨 Connection Refused: Ensure your FastAPI backend is running on http://localhost:8000.")
-                    except Exception as e:
-                        st.error(f"An unexpected error occurred: {e}")
+                prediction = result["prediction"]
+                confidence = result["confidence"]
+
+                st.markdown(f"### Prediction: {prediction}")
+                st.metric(
+                    "Model confidence",
+                    f"{confidence * 100:.2f}%",
+                )
+
+                if prediction.lower() in {"good", "normal"}:
+                    st.success("Predicted as a non-defective item.")
+                else:
+                    st.warning("Predicted as a potentially defective item.")
+
+                probabilities = result.get("probabilities", {})
+                if probabilities:
+                    df = pd.DataFrame(
+                        {
+                            "Class": list(probabilities.keys()),
+                            "Probability": list(probabilities.values()),
+                        }
+                    ).set_index("Class")
+                    st.bar_chart(df)
+
+            except requests.RequestException as exc:
+                st.error(f"API request failed: {exc}")
+            except (KeyError, ValueError):
+                st.error("The API returned an unexpected response.")
+
 
 if __name__ == "__main__":
     main()

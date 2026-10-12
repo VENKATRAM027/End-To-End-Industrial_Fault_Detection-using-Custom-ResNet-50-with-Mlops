@@ -48,8 +48,8 @@ stages:
       size: 1519
     - path: src/industrial_fault_detection/model/resnet_50.py
       hash: md5
-      md5: 172dd3ee8d99572299b6d8cfce15b7fd
-      size: 6286
+      md5: 598d89ebbaf01ddc1de69ae6e2014305
+      size: 1446
     - path: src/industrial_fault_detection/training/train.py
       hash: md5
       md5: 37ff1c97e32307e5789f7a48c93254dd
@@ -57,8 +57,8 @@ stages:
     outs:
     - path: models/bottle_best_model.keras
       hash: md5
-      md5: d4dfe51d59ef4421cf45b988f8d2047f
-      size: 283122008
+      md5: 30808cb03d2881452f7937798877e44e
+      size: 95064554
     - path: models/class_names.txt
       hash: md5
       md5: 6c9ccc5bc9d71409a46c0ae33927b027
@@ -73,8 +73,8 @@ stages:
       nfiles: 57
     - path: models/bottle_best_model.keras
       hash: md5
-      md5: d4dfe51d59ef4421cf45b988f8d2047f
-      size: 283122008
+      md5: 30808cb03d2881452f7937798877e44e
+      size: 95064554
     - path: src/industrial_fault_detection/evaluation/evaluate.py
       hash: md5
       md5: 662457c49574e523544982dfe1dc4af7
@@ -82,9 +82,9 @@ stages:
     outs:
     - path: models/confusion_matrix.png
       hash: md5
-      md5: 38443b72c8d5f18a90a86e3fe09969a6
-      size: 79883
+      md5: d1fc9f6779accd6e65a74fa067cffeff
+      size: 78866
     - path: models/evaluation_metrics.json
       hash: md5
-      md5: b1aea8a69e8f2c6096a08ab8bf43eda2
-      size: 875
+      md5: 69b12dffb08d01e33d6fb4d8785e5056
+      size: 919

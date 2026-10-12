@@ -1,125 +1,154 @@
-import sys
-from pathlib import Path
-project_root = Path(__file__).resolve().parent.parent.parent.parent
-sys.path.append(str(project_root))
 
+import json
 import mlflow
 import mlflow.tensorflow
 import tensorflow as tf
 
 from industrial_fault_detection.config import (
-    CATEGORY, IMAGE_SIZE, BATCH_SIZE, EPOCHS, LEARNING_RATE,
-    MODEL_SAVE_PATH, TRAIN_DIR, VAL_DIR, RANDOM_SEED, MODEL_NAME,
+    CATEGORY,
+    BATCH_SIZE,
+    EPOCHS,
+    LEARNING_RATE,
+    MODEL_SAVE_PATH,
+    TRAIN_DIR,
+    RANDOM_SEED,
+    MODEL_NAME,
+    MODELS_DIR,
 )
-from industrial_fault_detection.model.resnet_50 import build_resnet50 
-from industrial_fault_detection.data.data_preprocessing import load_and_preprocess_data
+from industrial_fault_detection.model.resnet_50 import (
+    build_resnet50,
+    compile_model,
+)
+from industrial_fault_detection.data.data_preprocessing import (
+    load_and_preprocess_data,
+)
 
-tf.keras.utils.set_random_seed(RANDOM_SEED)
 
-try:
-    tf.config.experimental.enable_op_determinism()
-except Exception:
-    pass
+def get_class_weights(class_names):
+    counts = [
+        len(list((TRAIN_DIR / name).glob("*.png")))
+        for name in class_names
+    ]
 
-def get_class_weights():
-    """Dynamically calculates class weights to combat MVTec AD imbalance."""
-    anomaly_count = len(list((TRAIN_DIR / "anomaly").glob("*.png")))
-    good_count = len(list((TRAIN_DIR / "good").glob("*.png")))
-    total = anomaly_count + good_count
+    if any(count == 0 for count in counts):
+        raise ValueError(f"Empty class detected: {dict(zip(class_names, counts))}")
 
-    # Class 0 = anomaly, Class 1 = good (Alphabetical ordering from tf.data)
-    weight_0 = (1 / anomaly_count) * (total / 2.0)
-    weight_1 = (1 / good_count) * (total / 2.0)
+    total = sum(counts)
+    n_classes = len(counts)
 
-    print(f"Class Weights Calculated - Anomaly (0): {weight_0:.2f}, Good (1): {weight_1:.2f}")
-    return {0: weight_0, 1: weight_1}
+    return {
+        index: total / (n_classes * count)
+        for index, count in enumerate(counts)
+    }
 
-def build_model():
-    input_shape = (IMAGE_SIZE[0], IMAGE_SIZE[1], 3)
-    model = build_resnet50(
-        input_shape=input_shape,
-        num_classes=2,
-        dropout_rate=0.4, # Increased dropout slightly to prevent overfitting on minority class
-    )
-    model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE),
-        loss='sparse_categorical_crossentropy',
-        metrics=[tf.keras.metrics.SparseCategoricalAccuracy(name="accuracy")],
-    )
-    return model
 
 def train_model():
-    experiment_name = f"Fault_Detection_{CATEGORY}"
-    mlflow.set_experiment(experiment_name)
+    tf.keras.utils.set_random_seed(RANDOM_SEED)
+
+    try:
+        tf.config.experimental.enable_op_determinism()
+    except Exception:
+        pass
+
+    train_ds, val_ds, class_names = load_and_preprocess_data()
+    class_weights = get_class_weights(class_names)
+
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+
+    mlflow.set_experiment(f"Fault_Detection_{CATEGORY}")
 
     with mlflow.start_run(run_name=MODEL_NAME):
-        class_weights = get_class_weights()
-        
-        mlflow.log_params({
-            'category': CATEGORY,
-            "model_name": MODEL_NAME,
-            'batch_size': BATCH_SIZE,
-            'epochs': EPOCHS,
-            'learning_rate': LEARNING_RATE,
-            'weight_anomaly': class_weights[0],
-            'weight_good': class_weights[1]
-        })
+        mlflow.log_params(
+            {
+                "category": CATEGORY,
+                "architecture": "ResNet50_ImageNet_TransferLearning",
+                "weights": "imagenet",
+                "backbone_frozen": True,
+                "batch_size": BATCH_SIZE,
+                "epochs": EPOCHS,
+                "learning_rate": LEARNING_RATE,
+                "random_seed": RANDOM_SEED,
+                "class_names": ",".join(class_names),
+            }
+        )
 
-        # Load data using your separated preprocessing script
-        (train_ds, val_ds, class_names) = load_and_preprocess_data()
-        
-        mlflow.log_param("class_0", class_names[0])
-        mlflow.log_param('class_1', class_names[1])
+        for index, weight in class_weights.items():
+            mlflow.log_param(f"class_weight_{class_names[index]}", weight)
 
-        model = build_model()
-        mlflow.log_param('total_parameters', model.count_params())
+        model = build_resnet50(
+            input_shape=(224, 224, 3),
+            num_classes=len(class_names),
+            dropout_rate=0.4,
+            weights="imagenet",
+            fine_tune=False,
+        )
 
-        MODEL_SAVE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        compile_model(model, learning_rate=LEARNING_RATE)
 
         callbacks = [
             tf.keras.callbacks.ModelCheckpoint(
-                filepath=str(MODEL_SAVE_PATH), monitor='val_loss',
-                mode='min', save_best_only=True, verbose=1,
+                filepath=str(MODEL_SAVE_PATH),
+                monitor="val_loss",
+                save_best_only=True,
+                mode="min",
+                verbose=1,
             ),
             tf.keras.callbacks.EarlyStopping(
-                monitor='val_loss', mode='min', patience=8, # Increased patience for weighted learning
-                restore_best_weights=True, verbose=1,
+                monitor="val_loss",
+                patience=4,
+                restore_best_weights=True,
+                mode="min",
+                verbose=1,
             ),
             tf.keras.callbacks.ReduceLROnPlateau(
-                monitor='val_loss', mode='min', factor=0.2,
-                patience=3, min_lr=1e-7, verbose=1,
-            ),    
+                monitor="val_loss",
+                patience=2,
+                factor=0.2,
+                min_lr=1e-7,
+                verbose=1,
+            ),
         ]
 
-        # Injecting the class weights into the training loop
         history = model.fit(
-            train_ds, 
+            train_ds,
             validation_data=val_ds,
-            epochs=EPOCHS, 
+            epochs=EPOCHS,
             callbacks=callbacks,
-            class_weight=class_weights
+            class_weight=class_weights,
         )
 
-        best_val_loss = min(history.history['val_loss'])
-        best_val_accuracy = max(history.history['val_accuracy'])
-        best_epoch = history.history['val_loss'].index(best_val_loss) + 1 
+        # Reload the best checkpoint, not the final in-memory epoch.
+        best_model = tf.keras.models.load_model(MODEL_SAVE_PATH)
 
-        mlflow.log_metric('best_val_accuracy', float(best_val_accuracy))
-        mlflow.log_metric('best_val_loss', float(best_val_loss))
-        mlflow.log_param('best_epoch', best_epoch)
+        metrics = best_model.evaluate(
+            val_ds,
+            return_dict=True,
+            verbose=1,
+        )
 
-        evaluation_results = model.evaluate(val_ds, verbose=1, return_dict=True)
+        for name, value in metrics.items():
+            mlflow.log_metric(f"best_checkpoint_{name}", float(value))
 
-        for metric_name, metric_value in evaluation_results.items():
-            mlflow.log_metric(f"final_{metric_name}", float(metric_value))
+        best_epoch = min(
+            range(len(history.history["val_loss"])),
+            key=lambda i: history.history["val_loss"][i],
+        ) + 1
 
-        class_names_path = MODEL_SAVE_PATH.parent / "class_names.txt"
-        with open(class_names_path, "w", encoding="utf-8") as file:
-            for class_name in class_names:
-                file.write(f"{class_name}\n")
-        
+        mlflow.log_param("best_epoch", best_epoch)
+
+        class_names_path = MODELS_DIR / "class_names.json"
+        class_names_path.write_text(
+            json.dumps(class_names, indent=2),
+            encoding="utf-8",
+        )
+
         mlflow.log_artifact(str(class_names_path))
-        mlflow.tensorflow.log_model(model, artifact_path="model")
+        mlflow.tensorflow.log_model(best_model, artifact_path="model")
+
+        print(f"Best model saved to: {MODEL_SAVE_PATH}")
+        print(f"Class names: {class_names}")
+        print(f"Validation metrics: {metrics}")
+
 
 if __name__ == "__main__":
     train_model()

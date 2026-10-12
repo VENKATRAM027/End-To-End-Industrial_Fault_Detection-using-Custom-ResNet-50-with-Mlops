@@ -1,35 +1,52 @@
 stages:
   ingest:
-    cmd: python src/industrial_fault_detection/data/data_ingestion.py
+    cmd: python -m industrial_fault_detection.data.data_ingestion
     deps:
-      - src/industrial_fault_detection/data/data_ingestion.py
       - src/industrial_fault_detection/config.py
+      - src/industrial_fault_detection/data/data_ingestion.py
+      - params.yaml
+    params:
+      - base.category
+      - base.random_seed
     outs:
       - data/processed/bottle
 
   validate:
-    cmd: python src/industrial_fault_detection/data/data_validation.py
+    cmd: python -m industrial_fault_detection.data.data_validation
     deps:
       - src/industrial_fault_detection/data/data_validation.py
       - data/processed/bottle
 
   train:
-    cmd: python src/industrial_fault_detection/training/train.py
+    cmd: python -m industrial_fault_detection.training.train
     deps:
-      - src/industrial_fault_detection/training/train.py
-      - src/industrial_fault_detection/model/resnet_50.py
+      - src/industrial_fault_detection/config.py
       - src/industrial_fault_detection/data/data_preprocessing.py
+      - src/industrial_fault_detection/model/resnet_50.py
+      - src/industrial_fault_detection/training/train.py
       - data/processed/bottle/train
       - data/processed/bottle/val
+    params:
+      - base.category
+      - base.random_seed
+      - train.image_size
+      - train.batch_size
+      - train.epochs
+      - train.learning_rate
+      - train.dropout_rate
+      - train.pretrained_weights
+      - train.fine_tune
     outs:
       - models/bottle_best_model.keras
-      - models/class_names.txt
+      - models/class_names.json
 
   evaluate:
-    cmd: python src/industrial_fault_detection/evaluation/evaluate.py
+    cmd: python -m industrial_fault_detection.evaluation.evaluate
     deps:
       - src/industrial_fault_detection/evaluation/evaluate.py
+      - src/industrial_fault_detection/config.py
       - models/bottle_best_model.keras
+      - models/class_names.json
       - data/processed/bottle/val
     metrics:
       - models/evaluation_metrics.json:
