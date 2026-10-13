@@ -38,7 +38,7 @@ stages:
       md5: a62f5c98352fccb85e2ef3a020e833be
       size: 1170
   train:
-    cmd: python src/industrial_fault_detection/training/train.py
+    cmd: python -m industrial_fault_detection.training.train
     deps:
     - path: data/processed/bottle/train
       hash: md5
@@ -50,29 +50,46 @@ stages:
       md5: b84da0131afaf9c080cf7eb7d390c933.dir
       size: 30526301
       nfiles: 57
+    - path: src/industrial_fault_detection/config.py
+      hash: md5
+      md5: 31f7e14ef815be2c3487e93f92392a02
+      size: 1347
     - path: src/industrial_fault_detection/data/data_preprocessing.py
       hash: md5
-      md5: a4b1cc171cb99d43bd4f2893346f04fa
-      size: 1519
+      md5: 6432bd90e12191e2fa54843f5478c9e4
+      size: 1730
     - path: src/industrial_fault_detection/model/resnet_50.py
       hash: md5
       md5: 598d89ebbaf01ddc1de69ae6e2014305
       size: 1446
     - path: src/industrial_fault_detection/training/train.py
       hash: md5
-      md5: 37ff1c97e32307e5789f7a48c93254dd
-      size: 4716
+      md5: 6f447e835389cb584bdb9e5c8bc9ab75
+      size: 4713
+    params:
+      params.yaml:
+        base.category: bottle
+        base.random_seed: 42
+        train.batch_size: 8
+        train.dropout_rate: 0.4
+        train.epochs: 15
+        train.fine_tune: false
+        train.image_size:
+        - 224
+        - 224
+        train.learning_rate: 0.001
+        train.pretrained_weights: imagenet
     outs:
     - path: models/bottle_best_model.keras
       hash: md5
-      md5: 30808cb03d2881452f7937798877e44e
+      md5: ab8ba9849b72eb8c4eaf1f348e35ef14
       size: 95064554
-    - path: models/class_names.txt
+    - path: models/class_names.json
       hash: md5
-      md5: 6c9ccc5bc9d71409a46c0ae33927b027
-      size: 15
+      md5: 278be6126724133bf3dbec08ba8657b9
+      size: 28
   evaluate:
-    cmd: python src/industrial_fault_detection/evaluation/evaluate.py
+    cmd: python -m industrial_fault_detection.evaluation.evaluate
     deps:
     - path: data/processed/bottle/val
       hash: md5
@@ -81,18 +98,26 @@ stages:
       nfiles: 57
     - path: models/bottle_best_model.keras
       hash: md5
-      md5: 30808cb03d2881452f7937798877e44e
+      md5: ab8ba9849b72eb8c4eaf1f348e35ef14
       size: 95064554
+    - path: models/class_names.json
+      hash: md5
+      md5: 278be6126724133bf3dbec08ba8657b9
+      size: 28
+    - path: src/industrial_fault_detection/config.py
+      hash: md5
+      md5: 31f7e14ef815be2c3487e93f92392a02
+      size: 1347
     - path: src/industrial_fault_detection/evaluation/evaluate.py
       hash: md5
-      md5: 662457c49574e523544982dfe1dc4af7
-      size: 3523
+      md5: c275d5540cdcdaa5627ca29e3cc7c368
+      size: 3284
     outs:
     - path: models/confusion_matrix.png
       hash: md5
-      md5: d1fc9f6779accd6e65a74fa067cffeff
-      size: 78866
+      md5: 4ae5549c7d53369a422e4aed308645fb
+      size: 46298
     - path: models/evaluation_metrics.json
       hash: md5
-      md5: 69b12dffb08d01e33d6fb4d8785e5056
-      size: 919
+      md5: 47be1e0eaeb0c2686ef23cd8ac01bf60
+      size: 789

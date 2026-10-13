@@ -90,8 +90,11 @@ async def predict(file: UploadFile = File(...)):
     if model is None:
         raise HTTPException(status_code=503, detail="Model is not loaded.")
         
-    if not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="File provided is not an image.")
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=400,
+            detail="Please upload a valid image file."
+        )
 
     try:
         # Read the image bytes
@@ -104,6 +107,9 @@ async def predict(file: UploadFile = File(...)):
         
         # Add the batch dimension (shape becomes: 1, 224, 224, 3)
         img_array = tf.expand_dims(img_array, 0)
+        
+        # Apply the exact same ImageNet preprocessing used during training
+        img_array = tf.keras.applications.resnet50.preprocess_input(img_array)
         
         # Run inference
         predictions = model.predict(img_array, verbose=0)
