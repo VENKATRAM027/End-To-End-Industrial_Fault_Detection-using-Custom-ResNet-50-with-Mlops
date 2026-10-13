@@ -459,7 +459,7 @@ This project is an applied machine learning prototype rather than a validated in
 
 ## 📄 License
 
-Add a `LICENSE` file to the repository and update this section with the license you choose before distributing the project for reuse.
+This project is licensed under the [MIT License](LICENSE).
 
 ---
 
