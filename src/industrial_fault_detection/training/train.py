@@ -1,5 +1,11 @@
-
+import sys
 import json
+from pathlib import Path
+
+# Dynamically resolve project root
+project_root = Path(__file__).resolve().parent.parent.parent.parent
+sys.path.append(str(project_root))
+
 import mlflow
 import mlflow.tensorflow
 import tensorflow as tf
@@ -15,14 +21,8 @@ from industrial_fault_detection.config import (
     MODEL_NAME,
     MODELS_DIR,
 )
-from industrial_fault_detection.model.resnet_50 import (
-    build_resnet50,
-    compile_model,
-)
-from industrial_fault_detection.data.data_preprocessing import (
-    load_and_preprocess_data,
-)
-
+from industrial_fault_detection.model.resnet_50 import build_resnet50
+from industrial_fault_detection.data.data_preprocessing import load_and_preprocess_data
 
 def get_class_weights(class_names):
     counts = [
@@ -40,7 +40,6 @@ def get_class_weights(class_names):
         index: total / (n_classes * count)
         for index, count in enumerate(counts)
     }
-
 
 def train_model():
     tf.keras.utils.set_random_seed(RANDOM_SEED)
@@ -79,11 +78,14 @@ def train_model():
             input_shape=(224, 224, 3),
             num_classes=len(class_names),
             dropout_rate=0.4,
-            weights="imagenet",
-            fine_tune=False,
         )
 
-        compile_model(model, learning_rate=LEARNING_RATE)
+        # Standard TensorFlow compile method replacing the missing compile_model function
+        model.compile(
+            optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE),
+            loss="sparse_categorical_crossentropy",
+            metrics=[tf.keras.metrics.SparseCategoricalAccuracy(name="accuracy")],
+        )
 
         callbacks = [
             tf.keras.callbacks.ModelCheckpoint(
@@ -148,7 +150,6 @@ def train_model():
         print(f"Best model saved to: {MODEL_SAVE_PATH}")
         print(f"Class names: {class_names}")
         print(f"Validation metrics: {metrics}")
-
 
 if __name__ == "__main__":
     train_model()

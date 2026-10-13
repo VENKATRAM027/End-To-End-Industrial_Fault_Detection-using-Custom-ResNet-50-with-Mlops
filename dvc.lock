@@ -1,16 +1,24 @@
 schema: '2.0'
 stages:
   ingest:
-    cmd: python src/industrial_fault_detection/data/data_ingestion.py
+    cmd: python -m industrial_fault_detection.data.data_ingestion
     deps:
+    - path: params.yaml
+      hash: md5
+      md5: d792845b92dc7137c4041b1f8c1e8968
+      size: 216
     - path: src/industrial_fault_detection/config.py
       hash: md5
-      md5: b27c995e9bc3eb436745ae2e70cf2c30
-      size: 1136
+      md5: 31f7e14ef815be2c3487e93f92392a02
+      size: 1347
     - path: src/industrial_fault_detection/data/data_ingestion.py
       hash: md5
       md5: 3fd77ba464dd545af3d06ca11c77695e
       size: 2525
+    params:
+      params.yaml:
+        base.category: bottle
+        base.random_seed: 42
     outs:
     - path: data/processed/bottle
       hash: md5
@@ -18,7 +26,7 @@ stages:
       size: 149355398
       nfiles: 279
   validate:
-    cmd: python src/industrial_fault_detection/data/data_validation.py
+    cmd: python -m industrial_fault_detection.data.data_validation
     deps:
     - path: data/processed/bottle
       hash: md5
